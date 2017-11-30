@@ -1,0 +1,304 @@
+---
+title: "Análise e testes de Hipótese com R"
+output: html_notebook
+---
+
+# Importando bibliotecas
+```{r}
+# Load libraries
+library(ggplot2) # visualization
+library(dplyr)   # data manipulation
+library(repr)    # used only to change default figure size
+
+# Change figure size
+options(repr.plot.width=6, repr.plot.height=4)
+```
+
+# 1. Defina as hipóteses
+> "O primeiro passo é indicar as hipóteses nulas e alternativas relevantes. Isso é importante, uma vez que a afirmação errônea das hipóteses prejudicará o resto do processo"
+
+Aqui estão alguns exemplos de hipóteses gerais:
+
+- "Esta moeda é justa".
+- "Os cientistas de dados preferem mais Python do que R."
+
+Em seguida, expresse a hipótese que você deseja investigar como:
+
+- Uma hipótese nula H0 que representa alguma posição padrão, e
+- Uma hipótese alternativa H1 com a qual vamos comparar H0.
+
+Outra maneira de pensar nisso é que queremos comparar um grupo experimental e um grupo de controle. Declarado desta forma:
+
+- A hipótese nula afirma que não há diferença entre os grupos e
+- A hipótese alternativa afirma que existe uma diferença estatisticamente significante entre os grupos.
+
+## Exemplo: Considere a variável de idade do conjunto de dados Titanic
+
+Nós soubemos que as mulheres e as crianças foram convidadas a entrar nas embarcações salva-vidas primeiro quando o Titanic estava afundando. Então, vamos investigar a hipótese geral de que as crianças a bordo do Titanic tiveram melhores chances de sobrevivência do que os adultos. Eles fizeram?
+
+Para responder a isso, podemos fazer um teste de hipóteses comparando duas proporções: a proporção de crianças que sobreviveram, \ $P{child}$  e a proporção de adultos que sobreviveram, \ $P{adult}$. 
+
+Podemos indicar as hipóteses nulas e alternativas como:
+
+\ $H_{0}$: \ $P{child}$-\ $P{adult}$ = 0  : *Não há diferença significativa na proporção de crianças que sobrevivem e na proporção de adultos que sobrevivem*
+
+\ $H_{A}$: \ $P{child}$ -\ $P{adult}$ > 0 *Existe uma melhor chance de sobrevivência para crianças do que adultos.* 
+
+*  \ $P{child}$  *é a nossa proporção de população desconhecida de crianças que sobreviveram*
+
+* \ $P{adult}$ *é a nossa proporção de população desconhecida de adultos que sobreviveram*
+
+Nosso parâmetro de interesse é a diferença entre as proporções de todos os passageiros infantis e todos os passageiros adulta que sobreviveram: \ $P{child}$-\ $P{adult}$.
+Nossa estimativa pontual é a diferença entre as proporções de passageiros infantis amostrados (sampled) e os passageiros adultos  amostrados que sobreviveram: \ $Pˆ{child}$ - \ $Pˆ{adult}$.
+
+# 2. Verificar hipóteses e condições
+
+"O segundo passo é considerar os pressupostos estatísticos sobre a amostra ao fazer o teste, por exemplo, pressupostos sobre a independência estatística ou sobre a forma das distribuições das observações. Isto é igualmente importante, pois pressupostos inválidos significarão que a Os resultados do teste são inválidos ". - Wikipedia
+
+No teste de hipóteses, os grupos "controle" e "experimental" são tipicamente definidos através de um cuidadoso projeto experimental. Este não é geralmente o caso em aplicações de ciência dos dados, no entanto. 
+
+Uma exceção é coletar dados de clique em um teste A / B que mede o efeito da nova colocação de anúncios em seu site em comparação com o grupo de controle ou a colocação existente.
+
+
+**Aqui estão as condições de inferência para comparar duas proporções independentes:**
+
+1. Independência:
+
+**Dentro de grupos:** as observações amostradas devem ser independentes dentro de cada grupo
+- Amostra / atribuição aleatória
+- Se amostragem sem substituição, n < 10% da população
+**Entre grupos:** os dois grupos devem ser independentes uns dos outros (não emparelhados)
+
+2. Tamanho da amostra / inclinação: cada amostra deve atender a condição de falha de sucesso:
+
+\ $n{child}$\ $p{child}$ ≥ 10 e \ $n{child}$(1−\ $p{child}$)≥10
+
+\ $n {adult}$\ $p{adult}$ ≥ 10 e \ $n{adult}$(1−\ $p{adult}$)≥10
+
+Note-se que para o cálculo do intervalo de confiança precisamos usar os valores de "pˆ" correspondentes às proporções observadas da amostra.
+
+Agora vamos verificar essas condições para nossa amostra:
+
+**Confira a independência:**
+
+**Verificar dentro de grupos:**
+
+A amostra deve ser aleatória tanto para adultos como para crianças, já que queremos tirar dados de train.csv e trabalhar com isso, ou amostrar aleatoriamente os dados nós mesmos.
+
+Para atender a condição de 10%, precisamos estimar quantos filhos e quantos adultos estão na população de passageiros do Titanic.
+
+- Vamos dar uma pausa para ver os dados do Titanic, para que possamos verificar a condição de 10%, depois continuar com os outros cchecks.
+
+### Load the Titanic training data set:
+
+```{r}
+train <- read.csv("Titanic/train.csv")  # read in Titanic training data csv file to R data frame
+str(train)                           # display data frame using R `str` function
+```
+
+O conjunto de dados de treinamento é uma amostra aleatória de 891 passageiros do total de 1309 passageiros em nosso conjunto de dados. Este é pouco mais de 67% dos 1317 passageiros a bordo do Titanic quando afundou.
+
+Já podemos ver que provavelmente não cumpriremos a condição de 10%, pois carregamos dados em mais da metade dos passageiros.
+
+Vamos descobrir quantas crianças, \ $N{child}$ e quantos adultos, \ $N{adult}$, estão em todo o conjunto de dados (arquivos train.csv e test.csv) ou população:
+
+```{r}
+
+# THE ENTIRE POPULATION
+test  <- read.csv('Titanic/test.csv')   # read in Titanic test data csv file
+
+training <- data.frame(train$Age, train$Sex, train$Pclass)  # disclude Survived and assign to new data frame so we don't lose "train"
+names(training) <- c("Age", "Sex","Pclass") # rename column variables
+testing <- data.frame(test$Age, test$Sex, test$Pclass)
+names(testing)  <- c("Age", "Sex","Pclass")
+
+full  <- bind_rows(training, testing)      # bind training & test data
+str(full)  # note that there are 1309 observations, which is over 99% of the entire population of 1317
+
+```
+
+Primeiro, verifique se há valores faltantes de Idade:
+
+```{r}
+full <- full[!is.na(full$Age),] # drop all rows with missing ages
+str(full)
+```
+Na verdade, temos apenas idades para **1046** passageiros, que são cerca de **79%** da população total de **1317** passageiros.
+
+Vamos proceder a estimar \ $N{child}$ e \ $N{adult}$ com base nesses 1046 passageiros, então ampliá-los por um fator de 1317/1046, ou ≈1.259
+
+Mas primeiro vamos dar uma olhada na distribuição das idades dos passageiros:
+
+```{r}
+# Overlay a probability distribution function (PDF) on a histogram of Age
+ggplot(full, aes(x=Age)) + 
+    ggtitle("Passenger Age") + 
+    xlab("Age") + 
+    ylab("Density") + 
+    geom_histogram(aes(y=..density..), binwidth=1)+
+    geom_density(alpha=.5, fill="#FFFFFF")
+```
+
+
+
+```{r}
+min(full$Age) * 12 # convert from years to months
+max(full$Age)
+```
+O passageiro mais jovem nesta amostra tinha 2 meses de idade e o mais velho tinha 80 anos, o que parece bastante mais antigo do que a expectativa de vida média de início a meados dos anos 50 para o ano de 1912 quando o Titanic afundou.
+
+Embora, obviamente, a distribuição das eras numéricas não seja normalmente distribuída, podemos examinar as discrepâncias em idades extremas com um enredo de quantile normal. 
+
+Os dados são visivelmente distorcidos, embora haja um mergulho claro no número de passageiros pré-adolescentes e adolescentes.
+
+
+```{r}
+qqnorm(full$Age, main="Passenger Age: Normal Quantile Plot")
+qqline(full$Age)
+
+```
+
+Agora vamos discretizar os valores da coluna Age numérica em dois grupos:
+
+
+
+```{r}
+# Add a new categorical variable called "AgeGroup" with values "Child" or "Adult".
+full$AgeGroup <- "Adult"
+full$AgeGroup[full$Age < 18] <- "Child"
+```
+
+```{r}
+table(full$AgeGroup)
+table(full$AgeGroup) * 1.259 # scale up values so total is 1317
+```
+
+Então, estimaremos \ $N{child}$≈194 e \ $N{adult}$≈1123. Isso significa que nossos tamanhos de amostra devem ser \ $n{child}$ < 19 e \ $n{adult}$ < 112 para o critério de 10% para a independência.
+
+
+Subconjunto, descarte linhas com valores de idade que faltam, em seguida, tire uma amostra aleatória do quadro de dados do treino de ≲10%:
+
+```{r}
+train <- data.frame(train$Survived, train$Age, train$Sex, train$Pclass); # select 4 columns of data frame
+names(train) <- c("Survived", "Age", "Sex","Pclass"); # rename columns from, e.g., train$Survived to Survived
+
+# Let's keep the data frame "train" intact for later use, and create a new one called "train_age"
+train_age <- train[!is.na(train$Age),] # strip "train" data of rows with Age=NULL
+summary(train_age$Age)                 # show some descriptive statistics of Age variable
+
+mysample <- train_age[sample(1:nrow(train_age), 115, replace=FALSE),]
+str(mysample)
+```
+
+Discreva as idades em mysample em dois grupos - adultos e crianças - e verifique a condição:
+```{r}
+length(which(mysample$Age < 18))
+length(which(mysample$Age >= 18))
+```
+
+Um tamanho de amostra de n = 115 trabalhou.
+
+```{r}
+# Add a new categorical variable called "AgeGroup" with values "Child" or "Adult".
+mysample$AgeGroup <- "Adult"
+mysample$AgeGroup[mysample$Age < 18] <- "Child"
+```
+
+```{r}
+# Add a new categorical variable called "Lived" with "Yes" or "No" instead of "1" or "0" for Survival.
+mysample$Lived[ mysample$Survived == 1 ] <- "Yes"
+mysample$Lived[ mysample$Survived == 0 ] <- "No"
+
+# Return a contingency table of the new Lived column.
+lived <- table( mysample$Lived )
+lived
+```
+
+```{r}
+# Create a contingency table with proportions.
+percent_lived <- round( 100*prop.table( lived ), 2 )
+percent_lived
+```
+
+```{r}
+# Let's plot that for fun
+barplot(sort(percent_lived, decreasing=FALSE),
+        main="Proportion of Titanic Passengers Who Lived",
+        xlab="Lived?", 
+        ylab="Percent of Passengers",
+        col="darkblue",
+        ylim=c(0,100)
+        )
+```
+
+Faça tabelas de freqüência e proporção de sobrevivência crianças / adulto:
+
+```{r}
+# `table` creates a contingency table
+age_group_lived <- table(mysample$AgeGroup, mysample$Lived)
+age_group_lived
+```
+
+```{r}
+# `prop.table` gives the row percentages
+age_group_lived_prop <- prop.table(age_group_lived, margin=1) # 1 = rows, 2 = columns
+age_group_lived_prop
+```
+
+
+P/ Satisfazer o topico (2):
+
+```{r}
+(age_group_lived[3] + age_group_lived[4]) * age_group_lived_prop[4]
+(age_group_lived[3] + age_group_lived[4]) * (1 - age_group_lived_prop[4])
+
+(age_group_lived[1] + age_group_lived[2]) * age_group_lived_prop[2]
+(age_group_lived[1] + age_group_lived[2]) * (1 - age_group_lived_prop[2])
+```
+
+
+# 3. Teste Estat'ístico e o valor P
+
+"Decida qual teste é apropriado e indique a estatística de teste relevante". - Wikipedia
+
+Uma vez que estamos testando a igualdade de proporções entre 2 amostras, seria apropriado usar o teste Xˆ2 (Chi-quadrado) como nossa estatística de teste.
+
+"Calcule a partir das observações o valor observado da estatística de teste". - Wikipedia
+
+"Calcule o valor de p. Esta é a probabilidade, sob a hipótese nula, de amostrar uma estatística de teste pelo menos tão extrema quanto a que foi observada". - Wikipedia
+
+```{r}
+# chi-squared test between Survived, Age
+chisq.test(mysample$Survived, mysample$AgeGroup)
+```
+
+# 4. Tomar uma decisão e interpretá-la no contexto da questão de pesquisa
+
+"Rejeitar a hipótese nula, em favor da hipótese alternativa, se e somente se o valor de p for menor que o limite de nível de significância (probabilidade selecionada)". - Wikipedia
+
+Se p-value<α, rejeitar \ $H{0}$, os dados fornecem evidências para \ $H{A}$
+Se p-value>α, não rejeite \ $H{0}$, os dados não fornecem evidência de \ $H{A}$
+
+Um p-valor quase zero indica que a evidência apóia a hipótese alternativa de que as crianças são mais propensas a ter sobrevivido. No entanto, temos um p-valor de 1.
+
+Portanto, não rejeitamos a hipótese nula.
+
+Existe uma chance de 100% de observar uma estatística tão extrema se nossa hipótese nula for verdadeira.
+
+## Exemplo: Considere a variável sexo
+
+```{r}
+chisq.test(mysample$Survived, mysample$Sex)
+```
+
+Um p-valor quase zero indica que a evidência apóia a hipótese alternativa de o sexo define as chances de sobrevivência.
+
+Então, rejeitamos a hipótese nula.
+
+Há uma chance (basicamente) de 0% de que você observaria uma estatística tão extrema se nossa hipótese nula fosse verdadeira.
+
+OUTRAS REFERENCIAS
+
+https://rpubs.com/jeffrey6557/52266
+https://www.analyticsvidhya.com/blog/2015/10/inferential-descriptive-statistics-beginners-r/
+https://www.analyticsvidhya.com/blog/2015/09/hypothesis-testing-explained/
